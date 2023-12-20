@@ -6,6 +6,7 @@ def parse_dictionary_to_json(text):
     lines = text.split('\n')
 
     # Extracting metadata
+    idx = 0
     metadata = {}
     for line in lines:
         if line.startswith('#'):
@@ -39,7 +40,9 @@ def parse_dictionary_to_json(text):
             comment = split_meaning[1].strip() if len(split_meaning) > 1 else ""
             meaning = split_meaning[0].replace('M:', '/')
             # Adding the word to the list
+            idx += 1
             words.append({
+                "id": str(idx),
                 "traditional": traditional,
                 "simplified": simplified,
                 "pinyin": pinyin,
@@ -51,7 +54,6 @@ def parse_dictionary_to_json(text):
     # Creating the final dictionary
     dictionary = {
         "version": metadata.get("Version", ""),
-        "metadata": metadata,
         "words": words
     }
 
