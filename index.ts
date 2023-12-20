@@ -7,7 +7,6 @@ import {ValueStream} from "level-read-stream";
 
 export * from './interfaces';
 type Db = ClassicLevel;
-// Takes ~90 seconds on 2015-era MacBook Pro, producing 140 MB Leveldb directory ("jmdict-eng-3.1.0.json").
 export type SetupType = {
   db: ClassicLevel,
   version: string,
@@ -127,7 +126,6 @@ function allSubstrings(s: string) {
 
 if (module === require.main) {
   (async function () {
-    // TODO: Download latest jmdict-eng JSON
     const DBNAME = 'test';
     const {db, version} = await setup(DBNAME, 'cccanto-webdist.json', true, false);
 

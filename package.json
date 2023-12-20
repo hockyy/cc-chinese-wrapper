@@ -1,6 +1,6 @@
 {
-  "name": "jmdict-wrapper",
-  "version": "1.1.2",
+  "name": "cc-canto-wrapper",
+  "version": "1.0.0",
   "description": "",
   "main": "index.js",
   "scripts": {
