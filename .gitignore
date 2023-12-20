@@ -3,3 +3,4 @@ test/
 .idea/
 jmdict*
 cccanto-webdist.txt
+cccanto-webdist.json

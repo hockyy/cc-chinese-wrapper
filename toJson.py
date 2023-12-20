@@ -26,7 +26,6 @@ def parse_dictionary_to_json(text):
 
             # Splitting the rest into two parts
             rest_parts = rest.split('/', 1)
-            print(rest_parts)
             phonetic_part, meaning_part = rest_parts[0], rest_parts[1]
 
             # Extracting pinyin and jyutping using regex
@@ -56,13 +55,13 @@ def parse_dictionary_to_json(text):
         "words": words
     }
 
-    return json.dumps(dictionary, indent=4, ensure_ascii=False)
+    return json.dumps(dictionary, ensure_ascii=False)
 
 def main():
     # Reading the dictionary from a file and converting it to JSON
     with open("cccanto-webdist.txt", "r", encoding='utf-8') as file:
         text = file.read()
-        json_output = improved_parse_dictionary_to_json(text)
+        json_output = parse_dictionary_to_json(text)
 
     # Writing the JSON output to a file
     with open("cccanto-webdist.json", "w", encoding='utf-8') as json_file:
