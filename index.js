@@ -148,7 +148,6 @@ function allSubstrings(s) {
 if (module === require.main) {
     (function () {
         return __awaiter(this, void 0, void 0, function* () {
-            // TODO: Download latest jmdict-eng JSON
             const DBNAME = 'test';
             const { db, version } = yield setup(DBNAME, 'cccanto-webdist.json', true, false);
             console.log({ version });
