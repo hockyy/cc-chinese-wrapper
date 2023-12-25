@@ -61,12 +61,12 @@ def parse_dictionary_to_json(text):
 
 def main():
     # Reading the dictionary from a file and converting it to JSON
-    with open("cccanto-webdist.txt", "r", encoding='utf-8') as file:
+    with open("public/cccanto-webdist.txt", "r", encoding='utf-8') as file:
         text = file.read()
         json_output = parse_dictionary_to_json(text)
 
     # Writing the JSON output to a file
-    with open("cccanto-webdist.json", "w", encoding='utf-8') as json_file:
+    with open("public/cantodict.json", "w", encoding='utf-8') as json_file:
         json_file.write(json_output)
 
 if __name__ == "__main__":

@@ -55,9 +55,9 @@ export async function setup(dbpath: string, filename = '', verbose = false, omit
         }
       }
       batch.push({type: 'put', key: `raw/words/${w.id}`, value: JSON.stringify(w)});
-      batch.push({type: 'put', key: `indexes/${w.traditional}-${w.id}`, value: w.id});
+      batch.push({type: 'put', key: `indexes/${w.content}-${w.id}`, value: w.id});
       if (!omitPartial) {
-        for (const substr of allSubstrings(w.traditional)) {
+        for (const substr of allSubstrings(w.content)) {
           // collisions in key ok, since value will be same
           batch.push({type: 'put', key: `indexes/partial/${substr}-${w.id}`, value: w.id});
         }
