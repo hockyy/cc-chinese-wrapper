@@ -135,6 +135,10 @@ export async function charAnywhere(db: Db, text: string, limit = -1) {
   return searchAnywhere(db, text, limit);
 }
 
+export async function hanzi(db: Db, character: string, limit = -1) {
+  return searchCharacter(db, character, limit);
+}
+
 type BetterOmit<T, K extends keyof T> = Pick<T, Exclude<keyof T, K>>;
 
 export async function getField(db: Db, key: keyof BetterOmit<Simplified, 'words'>): Promise<string> {
@@ -155,7 +159,7 @@ function allSubstrings(s: string) {
 if (module === require.main) {
   (async function () {
     const DBNAME = 'test';
-    const {db, version} = await setup(DBNAME, 'cccanto-webdist.json', true, false);
+    const {db, version} = await setup(DBNAME, 'public/cantodict.json', true, false);
 
     console.log({version});
 
@@ -171,6 +175,12 @@ if (module === require.main) {
     {
       const LIMIT = 4;
       const res = await charAnywhere(db, '死隔', LIMIT);
+      console.log(res)
+      console.log(`${res.length} found with limit ${LIMIT}`);
+    }
+    {
+      const LIMIT = 4;
+      const res = await hanzi(db, '隔', LIMIT);
       console.log(res)
       console.log(`${res.length} found with limit ${LIMIT}`);
     }

@@ -23,7 +23,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getField = exports.charAnywhere = exports.charBeginning = exports.idsToWords = exports.setup = void 0;
+exports.getField = exports.hanzi = exports.charAnywhere = exports.charBeginning = exports.idsToWords = exports.idsToChar = exports.setup = void 0;
 const fs_1 = require("fs");
 const classic_level_1 = require("classic-level");
 const level_read_stream_1 = require("level-read-stream");
@@ -70,13 +70,27 @@ function setup(dbpath, filename = '', verbose = false, omitPartial = false) {
                     }
                 }
                 batch.push({ type: 'put', key: `raw/words/${w.id}`, value: JSON.stringify(w) });
-                batch.push({ type: 'put', key: `indexes/${w.traditional}-${w.id}`, value: w.id });
+                batch.push({ type: 'put', key: `indexes/${w.content}-${w.id}`, value: w.id });
                 if (!omitPartial) {
-                    for (const substr of allSubstrings(w.traditional)) {
+                    for (const substr of allSubstrings(w.content)) {
                         // collisions in key ok, since value will be same
                         batch.push({ type: 'put', key: `indexes/partial/${substr}-${w.id}`, value: w.id });
                     }
                 }
+            }
+            if (batch.length) {
+                yield db.batch(batch);
+            }
+            for (const [numCharWritten, w] of raw.characters.entries()) {
+                if (batch.length > maxBatches) {
+                    yield db.batch(batch);
+                    batch = [];
+                    if (verbose) {
+                        console.log(`${numCharWritten} entries written`);
+                    }
+                }
+                batch.push({ type: 'put', key: `raw/char/${w.id}`, value: JSON.stringify(w) });
+                batch.push({ type: 'put', key: `indexchar/${w.content}-${w.id}`, value: w.id });
             }
             if (batch.length) {
                 yield db.batch(batch);
@@ -113,6 +127,17 @@ function searchAnywhere(db, text, limit) {
         return idsToWords(db, yield drainStream(values));
     });
 }
+function searchCharacter(db, text, limit) {
+    return __awaiter(this, void 0, void 0, function* () {
+        const gte = `indexchar/${text}`;
+        const values = new level_read_stream_1.ValueStream(db, { gte, lt: gte + '\uFFFF', limit });
+        return idsToChar(db, yield drainStream(values));
+    });
+}
+function idsToChar(db, idxs) {
+    return Promise.all(idxs.map(i => db.get(`raw/char/${i}`).then((x) => JSON.parse(x))));
+}
+exports.idsToChar = idsToChar;
 function idsToWords(db, idxs) {
     return Promise.all(idxs.map(i => db.get(`raw/words/${i}`).then((x) => JSON.parse(x))));
 }
@@ -129,6 +154,12 @@ function charAnywhere(db, text, limit = -1) {
     });
 }
 exports.charAnywhere = charAnywhere;
+function hanzi(db, character, limit = -1) {
+    return __awaiter(this, void 0, void 0, function* () {
+        return searchCharacter(db, character, limit);
+    });
+}
+exports.hanzi = hanzi;
 function getField(db, key) {
     return __awaiter(this, void 0, void 0, function* () {
         return db.get(`raw/${key}`);
@@ -149,7 +180,7 @@ if (module === require.main) {
     (function () {
         return __awaiter(this, void 0, void 0, function* () {
             const DBNAME = 'test';
-            const { db, version } = yield setup(DBNAME, 'cccanto-webdist.json', true, false);
+            const { db, version } = yield setup(DBNAME, 'public/cantodict.json', true, false);
             console.log({ version });
             const res = yield charBeginning(db, '事', 10);
             const resPartial = yield charAnywhere(db, '餅印', 10);
@@ -161,6 +192,12 @@ if (module === require.main) {
             {
                 const LIMIT = 4;
                 const res = yield charAnywhere(db, '死隔', LIMIT);
+                console.log(res);
+                console.log(`${res.length} found with limit ${LIMIT}`);
+            }
+            {
+                const LIMIT = 4;
+                const res = yield hanzi(db, '隔', LIMIT);
                 console.log(res);
                 console.log(`${res.length} found with limit ${LIMIT}`);
             }
