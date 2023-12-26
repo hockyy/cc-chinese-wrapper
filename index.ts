@@ -1,6 +1,6 @@
 import {promises as pfs} from 'fs';
 
-import {Simplified, Word} from './interfaces';
+import {Character, Simplified, Word} from './interfaces';
 import {ClassicLevel} from "classic-level";
 import {AbstractBatchOperation} from "abstract-level";
 import {ValueStream} from "level-read-stream";
@@ -66,10 +66,28 @@ export async function setup(dbpath: string, filename = '', verbose = false, omit
     if (batch.length) {
       await db.batch(batch);
     }
+
+    for (const [numCharWritten, w] of raw.characters.entries()) {
+      if (batch.length > maxBatches) {
+        await db.batch(batch);
+        batch = [];
+        if (verbose) {
+          console.log(`${numCharWritten} entries written`);
+        }
+      }
+      batch.push({type: 'put', key: `raw/char/${w.id}`, value: JSON.stringify(w)});
+      batch.push({type: 'put', key: `indexchar/${w.content}-${w.id}`, value: w.id});
+    }
+    if (batch.length) {
+      await db.batch(batch);
+    }
+
   } catch (e) {
     await db.close()
     throw e;
   }
+
+
   return {db, version: raw.version};
 }
 
@@ -93,6 +111,16 @@ async function searchAnywhere(db: Db, text: string, limit: number): Promise<Word
   const gte = `indexes/partial/${text}`;
   const values = new ValueStream<string, Simplified, Db>(db, {gte, lt: gte + '\uFFFF', limit})
   return idsToWords(db, await drainStream(values));
+}
+
+async function searchCharacter(db: Db, text: string, limit: number): Promise<Character[]> {
+  const gte = `indexchar/${text}`;
+  const values = new ValueStream<string, Simplified, Db>(db, {gte, lt: gte + '\uFFFF', limit})
+  return idsToChar(db, await drainStream(values));
+}
+
+export function idsToChar(db: Db, idxs: string[]): Promise<Character[]> {
+  return Promise.all(idxs.map(i => db.get(`raw/char/${i}`).then((x: string) => JSON.parse(x) as Character)))
 }
 
 export function idsToWords(db: Db, idxs: string[]): Promise<Word[]> {

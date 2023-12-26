@@ -4,7 +4,7 @@ export interface Entry {
   cantodict_id?: number;
   pinyin: string;
   jyutping: string;
-  notes: string;
+  notes: string[];
   meaning: string[];
   dialect: string;
   freq: number;
@@ -32,4 +32,5 @@ export interface Character extends Entry{
 export interface Simplified {
   version: string;
   words: Word[];
+  characters: Character[];
 }
