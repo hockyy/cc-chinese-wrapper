@@ -1,7 +1,25 @@
 import json
 import re
 
-characters_map = dict()
+
+def split_bracketed_string(input_string):
+    """
+    Splits a string in the format of "[1] ABC [2] DEF ... [x] GHI" into a list of strings "ABC", "DEF", "GHI".
+
+    Args:
+    input_string (str): The string to be split.
+
+    Returns:
+    list: A list containing the split strings.
+    """
+    import re
+
+    # Split the string using regular expression to find patterns like '[number]'
+    split_strings = re.split(r'\[\d+\]', input_string)
+
+    # Remove empty strings and strip whitespace from each element
+    return [s.strip() for s in split_strings if s.strip()]
+
 dictionary = dict()
 
 def get_coalesce(data, prop, coalesce = ""):
@@ -38,6 +56,7 @@ def parse_character_makemeahanzi(json_string):
 
     return character_interface
 
+
 def parse_cantodict(json_data):
     """
     Maps a given JSON data of a Chinese character from the Cantodict to the 'Character' interface.
@@ -52,8 +71,8 @@ def parse_cantodict(json_data):
     character_interface = {
         "content": get_coalesce(json_data, "chinese"),
         "cantodict_id": get_coalesce(json_data, "cantodict_id"),
-        "pinyin": [get_coalesce(json_data, "pinyin")],
-        "jyutping": [get_coalesce(json_data, "jyutping")],
+        "pinyin": get_coalesce(json_data, "pinyin").split(' '),
+        "jyutping": get_coalesce(json_data, "jyutping").split(' '),
         "notes": [get_coalesce(json_data, "notes", None)],
         "meaning": [get_coalesce(json_data, "definition", None)],
         "dialect": get_coalesce(json_data, "dialect", None),
@@ -64,16 +83,23 @@ def parse_cantodict(json_data):
         "radical": get_coalesce(json_data, "radical", None),
     }
 
+    tot = []
+    for meaning in character_interface["meaning"]:
+        if meaning:
+            tot.extend(split_bracketed_string(meaning))
+
+    character_interface["meaning"] = tot
+
     return character_interface
 
 def parse_cantodict_compound(json_data):
     global dictionary
-    character_interface = {
+    compound_interface = {
         "id": len(dictionary['words']),
         "content": get_coalesce(json_data, "chinese"),
         "cantodict_id": get_coalesce(json_data, "cantodict_id"),
-        "pinyin": [get_coalesce(json_data, "pinyin")],
-        "jyutping": [get_coalesce(json_data, "jyutping")],
+        "pinyin": get_coalesce(json_data, "pinyin").split(' '),
+        "jyutping": get_coalesce(json_data, "jyutping").split(' '),
         "notes": [get_coalesce(json_data, "notes", None)],
         "meaning": [get_coalesce(json_data, "definition", None)],
         "dialect": get_coalesce(json_data, "dialect", None),
@@ -81,9 +107,17 @@ def parse_cantodict_compound(json_data):
         "variants": get_coalesce(json_data, "variants", []),
         "similar": get_coalesce(json_data, "similar", []),
     }
-    dictionary['words'].append(character_interface)
+    tot = []
+    for meaning in compound_interface["meaning"]:
+        if meaning:
+            tot.extend(split_bracketed_string(meaning))
+
+    compound_interface["meaning"] = tot
+
+    dictionary['words'].append(compound_interface)
 
 def parse_dictionary_to_json(text):
+    global dictionary
     # Splitting the text into lines
     lines = text.split('\n')
 
@@ -98,6 +132,10 @@ def parse_dictionary_to_json(text):
                 key = parts[0].strip()
                 value = parts[1].strip()
                 metadata[key] = value
+            tmp_data = re.search(r'^#! (\w+)=(.+)', line)
+        if(tmp_data and tmp_data.group(1) and tmp_data.group(2)):
+            metadata[tmp_data.group(1).strip()] = tmp_data.group(2).strip()
+
 
     # Parsing the words
     words = []
@@ -134,13 +172,10 @@ def parse_dictionary_to_json(text):
             })
 
     # Creating the final dictionary
-    dictionary = {
-        "version": metadata.get("Version", ""),
-        "words": words,
-        # "characters" : # TODO: put it here, and read public/dictionary.txt, having entries as the one I sent
-    }
-
-    return dictionary
+    dictionary["version"] = metadata.get("Version", "")
+    if(dictionary["version"] == ""):
+        dictionary["version"] = metadata.get("version", "")
+    dictionary["words"] = words
 
 def resolveSame(cantodict, makemeahanzi):
     # print(cantodict, makemeahanzi)
@@ -154,14 +189,26 @@ def resolveSame(cantodict, makemeahanzi):
     cantodict['pinyin'].extend(makemeahanzi['pinyin'])
     return cantodict
 
-def main():
-    global characters_map
-    global dictionary
+def parse_cccanto():
     # Reading the dictionary from a file and converting it to JSON
     with open("public/cccanto-webdist.txt", "r", encoding='utf-8') as file:
         text = file.read()
-        dictionary = parse_dictionary_to_json(text)
+        parse_dictionary_to_json(text)
 
+    with open("public/detail-compounds.json", "r", encoding='utf-8') as file:
+        compounds = json.load(file)
+        for key, val in compounds.items():
+            entry = parse_cantodict_compound(val)
+
+def parse_cccedict():
+    # Reading the dictionary from a file and converting it to JSON
+    with open("public/cedict_ts.u8", "r", encoding='utf-8') as file:
+        text = file.read()
+        parse_dictionary_to_json(text)
+
+def parse_characters():
+    global dictionary
+    characters_map = dict()
     characters_list = []
     # Parsing and adding entries from "make me a hanzi" file
     with open("public/dictionary.txt", "r", encoding='utf-8') as file:
@@ -169,42 +216,48 @@ def main():
             entry = parse_character_makemeahanzi(line)
             if entry["content"]:
                 characters_map[entry["content"]] = entry
-    print(len(characters_map))
-    ans = 0
+
     with open("public/detail-characters.json", "r", encoding='utf-8') as file:
         cantodict_characters = json.load(file)
-        print(len(cantodict_characters.items()))
         for key, val in cantodict_characters.items():
             entry = parse_cantodict(val)
             # If there is already an entry in characters_map, update it
             if entry["content"] in characters_map:
-                ans += 1
                 merged = resolveSame(entry, characters_map[entry["content"]])
                 characters_map[entry["content"]].update(merged)
             else:
                 characters_map[entry["content"]] = entry
-    print(ans, " has the same entry")
 
     # Assigning IDs and creating characters list
     characters_list = []
     for idx, val in enumerate(characters_map.values()):
         val["id"] = str(idx)
         characters_list.append(val)
-
-    with open("public/detail-compounds.json", "r", encoding='utf-8') as file:
-        compounds = json.load(file)
-        print(len(compounds.items()))
-        for key, val in compounds.items():
-            entry = parse_cantodict_compound(val)
-
+        
     dictionary["characters"] = characters_list
-    output_json = json.dumps(dictionary, ensure_ascii=False)
-    print(len(dictionary['words']))
-    print(len(dictionary['characters']))
 
+def write(filename = "cantodict"):
+    global dictionary
+
+    output_json = json.dumps(dictionary, ensure_ascii=False)
     # Writing the JSON output to a file
-    with open("public/cantodict.json", "w", encoding='utf-8') as json_file:
+    with open(f"public/{filename}.json", "w", encoding='utf-8') as json_file:
         json_file.write(output_json)
+
+def parse_chinese():
+    parse_cccedict()
+    parse_characters()
+    write("chinese")
+
+def parse_canto():
+    parse_cccanto()
+    parse_characters()
+    write("cantodict")
+
+def main():
+    # parse_canto()
+    parse_chinese()
+
 
 if __name__ == "__main__":
     main()
