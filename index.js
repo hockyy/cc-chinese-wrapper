@@ -71,8 +71,13 @@ function setup(dbpath, filename = '', verbose = false, omitPartial = false) {
                 }
                 batch.push({ type: 'put', key: `raw/words/${w.id}`, value: JSON.stringify(w) });
                 batch.push({ type: 'put', key: `indexes/${w.content}-${w.id}`, value: w.id });
+                batch.push({ type: 'put', key: `indexes/${w.simplified}-${w.id}`, value: w.id });
                 if (!omitPartial) {
                     for (const substr of allSubstrings(w.content)) {
+                        // collisions in key ok, since value will be same
+                        batch.push({ type: 'put', key: `indexes/partial/${substr}-${w.id}`, value: w.id });
+                    }
+                    for (const substr of allSubstrings(w.simplified)) {
                         // collisions in key ok, since value will be same
                         batch.push({ type: 'put', key: `indexes/partial/${substr}-${w.id}`, value: w.id });
                     }
