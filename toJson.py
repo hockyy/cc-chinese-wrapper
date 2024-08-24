@@ -1,10 +1,10 @@
 from abc import ABC, abstractmethod
 import json
 import re
-from typing import Dict, List, Union
+from typing import Dict, List, Union, Any, Tuple
 
 class DictionaryEntry:
-    def __init__(self, id: str = "", content: str = "", simplified: str = "", pinyin: str = "", jyutping: str = "", meaning: List[str] = None, notes: List[str] = None):
+    def __init__(self, id: str = "", content: str = "", simplified: str = "", pinyin = None, jyutping = None, meaning: List[str] = None, notes: List[str] = None):
         self.id = id
         self.content = content
         self.simplified = simplified
@@ -14,8 +14,10 @@ class DictionaryEntry:
         self.notes = notes or []
 
 class CharacterEntry(DictionaryEntry):
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
+    def __init__(self, id: str = "", content: str = "", simplified: str = "", pinyin = [], jyutping = [], 
+                 meaning: List[str] = None, notes: List[str] = None, **kwargs):
+        super().__init__(id=id, content=content, simplified=simplified, pinyin=pinyin, jyutping=jyutping, 
+                         meaning=meaning, notes=notes)
         self.decomposition = kwargs.get('decomposition', '')
         self.radical = kwargs.get('radical', '')
         self.etymology = kwargs.get('etymology', {})
@@ -147,11 +149,11 @@ class MakeMeAHanziParser(BaseParser):
                 for line in file:
                     entries = cls.parse_entry(line)
                     for entry in entries:
-                        dictionary.add_character(entry)
+                        dictionary.add_character(entry)  # Changed from add_word to add_character
         except FileNotFoundError:
             print(f"Error: File '{filename}' not found.")
-        except PermissionError:
-            print(f"Error: Permission denied when trying to read '{filename}'.")
+        except json.JSONDecodeError as e:
+            print(f"Error parsing JSON in '{filename}': {str(e)}")
         except Exception as e:
             print(f"An unexpected error occurred while parsing '{filename}': {str(e)}")
         
@@ -172,15 +174,16 @@ class MakeMeAHanziParser(BaseParser):
         return CharacterEntry(
             content=cls.get_coalesce(character_data, "character"),
             pinyin=cls.get_coalesce(character_data, "pinyin", []),
+            jyutping=[],
             meaning=[cls.get_coalesce(character_data, "definition")] if "definition" in character_data else [],
             decomposition=cls.get_coalesce(character_data, "decomposition"),
             radical=cls.get_coalesce(character_data, "radical"),
-            etymology=cls.get_coalesce(character_data, "etymology", {"type": None, "hint": None})
+            etymology=cls.get_coalesce(character_data, "etymology", {"type": None, "hint": None}),
         )
 
-        class CantoDictParser(BaseParser):
+class CantoDictParser(BaseParser):
     @classmethod
-    def parse_file(cls, filename: str) -> Dictionary:
+    def parse_file(cls, filename: str, is_char: bool = True) -> Dictionary:
         dictionary = Dictionary()
         dictionary.version = "CantoDict-1.0"  # You may want to adjust this version
 
@@ -188,9 +191,9 @@ class MakeMeAHanziParser(BaseParser):
             with open(filename, "r", encoding='utf-8') as file:
                 data = json.load(file)
                 for entry_data in data.values():
-                    entries = cls.parse_entry(entry_data)
+                    entries = cls.parse_entry(entry_data, is_char)
                     for entry in entries:
-                        if isinstance(entry, CharacterEntry):
+                        if is_char:
                             dictionary.add_character(entry)
                         else:
                             dictionary.add_word(entry)
@@ -204,8 +207,8 @@ class MakeMeAHanziParser(BaseParser):
         return dictionary
 
     @classmethod
-    def parse_entry(cls, entry: dict) -> List[Union[CharacterEntry, DictionaryEntry]]:
-        if cls.is_character_entry(entry):
+    def parse_entry(cls, entry: dict, is_char: bool = True) -> List[Union[CharacterEntry, DictionaryEntry]]:
+        if is_char:
             return [cls.parse_character(entry)]
         else:
             return [cls.parse_compound(entry)]
@@ -266,50 +269,80 @@ class WordsHKParser(BaseParser):
     def parse_words(cls, wordshk_data: dict) -> List[DictionaryEntry]:
         words = []
         for entry_data in wordshk_data.values():
-            words.extend(cls.parse_entry(entry_data))
+            entry = cls.parse_entry(entry_data)
+            if(entry.content == "" or entry.jyutping == [] or len(entry.meaning) == 0):
+                continue
+            words.append(entry)
         return words
 
     @classmethod
-    def parse_entry(cls, entry: dict) -> List[DictionaryEntry]:
-        base_entry = DictionaryEntry(
-            id=str(entry.get("id", "")),
-            content=entry.get("variants", [{}])[0].get("w", ""),
+    def parse_entry(cls, entry: dict) -> DictionaryEntry:
+        return DictionaryEntry(
+            content=cls.extract_content(entry),
             jyutping=cls.extract_jyutping(entry),
-            notes=entry.get("labels", []) + entry.get("poses", [])
+            meaning=cls.extract_meanings(entry)
         )
 
-        entries = []
-        for meaning, examples in cls.extract_meanings_and_examples(entry):
-            new_entry = DictionaryEntry(
-                id=base_entry.id,
-                content=base_entry.content,
-                jyutping=base_entry.jyutping,
-                notes=base_entry.notes.copy(),
-                meaning=[meaning],
-            )
-            if examples:
-                new_entry.notes.extend(examples)
-            entries.append(new_entry)
-
-        return entries
+    @classmethod
+    def extract_content(cls, entry: dict) -> str:
+        try:
+            if entry.get("variants"):
+                return entry["variants"][0].get("w", "")
+        except:
+            return ""
 
     @classmethod
-    def extract_jyutping(cls, entry: dict) -> str:
-        if entry.get("variants") and entry["variants"][0].get("p"):
-            return " ".join(syllable.get("S", {}).get("t", "") for syllable in entry["variants"][0]["p"][0])
-        return ""
+    def extract_jyutping(cls, entry: dict) -> List[str]:
+        try:
+            if entry.get("variants") and entry["variants"][0].get("p"):
+                all_pronunciations = entry["variants"][0]["p"]
+                
+                jyutping_list = []
+                
+                for pronunciation in all_pronunciations:
+                    jyutping = []
+                    for syllable in pronunciation:
+                        s_dict = syllable.get("S", {})
+                        initial = s_dict.get("i", "")
+                        nucleus = s_dict.get("n", "")
+                        coda = s_dict.get("c", "")
+                        tone = s_dict.get("t", "")
+                        
+                        # Combine parts, handling potential None values
+                        syllable_parts = [initial, nucleus, coda]
+                        syllable_str = "".join(part for part in syllable_parts if part)
+                        
+                        # Add tone if it exists
+                        if tone:
+                            syllable_str += tone[-1]  # Take only the last character (the tone number)
+                        
+                        if syllable_str:
+                            jyutping.append(syllable_str.lower())
+                    
+                    if jyutping:
+                        jyutping_list.append(" ".join(jyutping))
+                if(jyutping_list == []): return ""
+                return jyutping_list[0]
+        except Exception as e:
+            print(f"Error in extract_jyutping: {str(e)}")
+        
+        return []
 
     @classmethod
-    def extract_meanings_and_examples(cls, entry: dict) -> List[Tuple[str, List[str]]]:
-        meanings_and_examples = []
-        for def_entry in entry.get("defs", []):
-            for lang in ["yue", "eng"]:
-                for definition in def_entry.get(lang, []):
-                    meaning = next((item[1] for item in definition if item[0] == "T"), "")
-                    examples = [item[1] for item in definition if item[0] == "L"]
-                    if meaning:
-                        meanings_and_examples.append((meaning, examples))
-        return meanings_and_examples
+    def extract_meanings(cls, entry: dict) -> List[str]:
+        try:
+            meanings = []
+            for def_entry in entry.get("defs", []):
+                for lang in ["eng"]:
+                    if lang in def_entry:
+                        meaning = [
+                            item[1] for item in def_entry[lang][0] 
+                            if item[0] in ["T", "L"]
+                        ]
+                        meanings.extend(meaning)
+            return meanings
+        except:
+            return []
 
 class CCEDICTParser(BaseParser):
     @classmethod
@@ -375,43 +408,52 @@ class CCEDICTParser(BaseParser):
                 words.append(DictionaryEntry(
                     content=traditional,
                     simplified=simplified,
-                    pinyin=pinyin,
-                    jyutping=jyutping,
+                    pinyin=[pinyin],
+                    jyutping=[jyutping],
                     meaning=[cleaned.strip() for cleaned in meaning.strip(' /').split('/')],
                     notes=[comment] if comment else []
                 ))
         return words
 
 class DictionaryParser:
-    def __init__(self):
+    def __init__(self, debug=True, debug_limit=1000000):
         self.dictionary = Dictionary()
+        self.debug = debug
+        self.debug_limit = debug_limit
+
+    def _parse_limited(self, items, add_method, source_name):
+        print(f"Adding {source_name}: {len(items)} entries {add_method.__name__}")
+        for i, item in enumerate(items):
+            add_method(item)
+            if self.debug and i + 1 >= self.debug_limit:
+                print(f"Debug limit of {self.debug_limit} entries reached for {source_name}.")
+                break
 
     def parse_wordshk(self, filename: str) -> None:
         wordshk_dict = WordsHKParser.parse_file(filename)
-        for word in wordshk_dict.words.values():
-            self.dictionary.add_word(word)
+        self._parse_limited(wordshk_dict.words.values(), self.dictionary.add_word, "WordsHK")
 
-    def parse_cantodict(self, filename: str) -> None:
-        cantodict = CantoDictParser.parse_file(filename)
-        for word in cantodict.words.values():
-            self.dictionary.add_word(word)
-        for char in cantodict.characters.values():
-            self.dictionary.add_character(char)
-
-    def parse_makemeahanzi(self, filename: str) -> None:
-        makemeahanzi_dict = MakeMeAHanziParser.parse_file(filename)
-        for char in makemeahanzi_dict.characters.values():
-            self.dictionary.add_character(char)
+    def parse_cantodict_words(self, filename: str) -> None:
+        cantodict = CantoDictParser.parse_file(filename, False)
+        self._parse_limited(cantodict.words.values(), self.dictionary.add_word, "CantoDict words")
 
     def parse_cccedict(self, filename: str) -> None:
         cccedict_dict = CCEDICTParser.parse_file(filename)
-        for word in cccedict_dict.words.values():
-            self.dictionary.add_word(word)
+        self._parse_limited(cccedict_dict.words.values(), self.dictionary.add_word, "CC-CEDICT")
+
+    def parse_cantodict(self, filename: str) -> None:
+        cantodict = CantoDictParser.parse_file(filename, True)
+        self._parse_limited(cantodict.characters.values(), self.dictionary.add_character, "CantoDict characters")
+
+    def parse_makemeahanzi(self, filename: str) -> None:
+        makemeahanzi_dict = MakeMeAHanziParser.parse_file(filename)
+        self._parse_limited(makemeahanzi_dict.characters.values(), self.dictionary.add_character, "MakeMeAHanzi")
+
 
     def parse_canto(self) -> None:
         self.parse_cccedict("public/cccanto-webdist.txt")
-        self.parse_wordshk("public/wordshk_data.json")
-        self.parse_cantodict("public/detail-compounds.json")
+        self.parse_wordshk("public/dict.json")
+        self.parse_cantodict_words("public/detail-compounds.json")
         self.parse_cantodict("public/detail-characters.json")
         self.parse_makemeahanzi("public/dictionary.txt")
 
@@ -421,6 +463,8 @@ class DictionaryParser:
 
     def write(self, filename: str) -> None:
         try:
+            print(f"Words: {len(self.dictionary.words)}")
+            print(f"Chars: {len(self.dictionary.characters)}")
             output_json = json.dumps(self.dictionary.to_json(), ensure_ascii=False)
             with open(f"public/{filename}.json", "w", encoding='utf-8') as json_file:
                 json_file.write(output_json)
