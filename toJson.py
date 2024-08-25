@@ -4,7 +4,7 @@ import re
 from typing import Dict, List, Union, Any, Tuple
 
 class DictionaryEntry:
-    def __init__(self, id: str = "", content: str = "", simplified: str = "", pinyin = None, jyutping = None, meaning: List[str] = None, notes: List[str] = None):
+    def __init__(self, id: str = None, content: str = "", simplified: str = "", pinyin = None, jyutping = None, meaning: List[str] = None, notes: List[str] = None):
         self.id = id
         self.content = content
         self.simplified = simplified
@@ -14,7 +14,7 @@ class DictionaryEntry:
         self.notes = notes or []
 
 class CharacterEntry(DictionaryEntry):
-    def __init__(self, id: str = "", content: str = "", simplified: str = "", pinyin = [], jyutping = [], 
+    def __init__(self, id: str = None, content: str = "", simplified: str = "", pinyin = [], jyutping = [], 
                  meaning: List[str] = None, notes: List[str] = None, **kwargs):
         super().__init__(id=id, content=content, simplified=simplified, pinyin=pinyin, jyutping=jyutping, 
                          meaning=meaning, notes=notes)
@@ -336,7 +336,7 @@ class WordsHKParser(BaseParser):
                 for lang in ["eng"]:
                     if lang in def_entry:
                         meaning = [
-                            item[1] for item in def_entry[lang][0] 
+                            item[1].split(';') for item in def_entry[lang][0] 
                             if item[0] in ["T", "L"]
                         ]
                         meanings.extend(meaning)
@@ -416,7 +416,7 @@ class CCEDICTParser(BaseParser):
         return words
 
 class DictionaryParser:
-    def __init__(self, debug=True, debug_limit=1000000):
+    def __init__(self, debug=False, debug_limit=10):
         self.dictionary = Dictionary()
         self.debug = debug
         self.debug_limit = debug_limit
